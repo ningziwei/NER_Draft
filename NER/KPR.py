@@ -21,6 +21,18 @@ def find_smallest(dep_T2H, p):
     smallest = find_smallest(dep_T2H, min(p_out))
     return smallest
 
+def find_biggest(dep_T2H, p):
+    '''
+    寻找当前中心语的覆盖范围
+    由于不存在交叉的情况，所以只要往后找最大的即可
+    return: 最后一个词对应的位置
+    '''
+    p_out = list(dep_T2H.get(p,{}).values())
+    p_out = list(chain(*p_out))
+    if not p_out or max(p_out)<p: return p
+    biggest = find_biggest(dep_T2H, max(p_out))
+    return biggest
+
 def have_dep(idx, tag, dep, dep_T2H):
     '''判断当前词是否做对应成分'''
     f1 = tag in dep_T2H[idx+1]
@@ -76,7 +88,6 @@ def get_so(seg, pos, dep, dep_T2H):
     抽取定中短语，attribute-head phrase
     '''
     phrase_span = [[]]
-    uncon_so_spans = []
     for i in range(len(pos)):
         if is_skip_word(dep, dep_T2H, i):
             continue
@@ -85,14 +96,13 @@ def get_so(seg, pos, dep, dep_T2H):
             while True:                                                 # 在找当前范围的同时判断之前的是否被覆盖
                 if phrase_span[-1] and start<=phrase_span[-1][0]:
                     phrase_span.pop()
-                    uncon_so_spans.pop()
                 else:
                     break
-            uncon_so_spans.append([start, i+1])
+            end = find_biggest(dep_T2H, i+1)
             if is_concat_word(dep, i, phrase_span[-1]):
                 start = phrase_span[-1][0]
                 phrase_span.pop()
-            phrase_span.append([start, i+1])
+            phrase_span.append([start, end])
     phrase_span = phrase_span[1:]
     # phrases = [seg[s[0]-1:s[1]] for s in phrase_span]
     # print('noun phrases', phrases)

@@ -1,0 +1,16 @@
+{
+    "data_dir": "../data/Pretrain",
+    "raw_text_filename": "raw_text.txt",
+    "raw_text_seg_filename": "raw_text_seg.txt",
+    "triple_filename": "triple.json",
+    "lm_path": "../model/chinese_roberta_wwm_ext",
+    "output_path": "../model/Pretrain",
+    "prefix": "BuildingKEPLER",
+    "gamma": 4,
+    "batch_size": 16,
+    "lr": 1e-5,
+    "epochs": 200,
+    "grad_accum_step": 4,
+    "show_loss_step": 200,
+    "save_model_step": 20
+}

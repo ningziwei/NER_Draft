@@ -1,0 +1,16 @@
+{
+    "data_dir": "data", # string, 原始、中间数据所在目录
+    "raw_text_filename": "raw_text.txt", # string, 数据目录中原始建筑文本文件名
+    "raw_text_seg_filename": "raw_text_seg.txt", # string, 数据目录中分词过的建筑文本文件名，由 preprocess.py 生成
+    "triple_filename": "triple.json", # string, 数据目录中知识三元组文件名
+    "lm_path": "model/chinese_roberta_wwm_ext", # string, 初始模型所在目录
+    "output_path": "output", # string, 模型参数、日志文件输出目录的母目录
+    "prefix": "BuildingKEPLER", # string, 输出目录的前缀，用于区分不同实验设置，可以任意起
+    "gamma": 4, # float, KEPLER margin loss 的 margin 大小
+    "batch_size": 16, # int, 模型训练使用的批次大小
+    "lr": 1e-5, # float, 学习率
+    "epochs": 200, # int, 训练轮数
+    "grad_accum_step": 4, # int, 梯度累积步长，即 loss.backward() 累积若干次后再执行 optimizer.step()，相当于加大 batch size
+    "show_loss_step": 200, # int, 输出 loss 步长，控制输入日志的长度
+    "save_model_step": 20, # int, 保存模型步长，每经过一定数量的 epoch 就保存一个模型
+}

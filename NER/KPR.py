@@ -75,38 +75,65 @@ def is_anchor_word(seg, pos, dep, idx):
         f3 = is_anchor_word(seg, pos, dep, dep[idx][1]-1)
     return f1 or f2 or f3 or f4
 
-def is_concat_word(dep, idx, pre_span):
+def is_concat_coo(dep, pre_span, idx):
     '''
+    判断当前范围是否需要跟上一个范围合并
     如果当前词的COO能链接到上一个span，则合并
+    如果当前范围跟上一个范围中间是“的”，则合并
     '''
     f1 = dep[idx][2]=='COO'
     f2 = pre_span and pre_span[0]<=dep[idx][1]<=pre_span[1]
+    return f1 and f2
+
+def is_concat_uatt(seg, pre_span, start):
+    '''
+    判断当前范围是否需要跟上一个范围合并
+    如果当前词的COO能链接到上一个span，则合并
+    如果当前范围跟上一个范围中间是“的”，则合并
+    '''
+    f1 = start>2 and seg[start-2]=='的'
+    f2 = pre_span and pre_span[-1]==start-1
+    # if pre_span and seg[start-1]=='建筑':
+    #     print('88', seg[start-1], seg[start-2])
+    #     print(f1,f2)
+    #     print(pre_span[-1],start)
     return f1 and f2
 
 def get_so(seg, pos, dep, dep_T2H):
     '''
     抽取定中短语，attribute-head phrase
     '''
-    phrase_span = [[]]
+    phrase_spans = [[]]
     for i in range(len(pos)):
         if is_skip_word(dep, dep_T2H, i):
             continue
         if is_anchor_word(seg, pos, dep, i):
             start = find_smallest(dep_T2H, i+1)
             while True:                                                 # 在找当前范围的同时判断之前的是否被覆盖
-                if phrase_span[-1] and start<=phrase_span[-1][0]:
-                    phrase_span.pop()
+                if phrase_spans[-1] and start<=phrase_spans[-1][0]:
+                    phrase_spans.pop()
                 else:
                     break
             end = find_biggest(dep_T2H, i+1)
-            if is_concat_word(dep, i, phrase_span[-1]):
-                start = phrase_span[-1][0]
-                phrase_span.pop()
-            phrase_span.append([start, end])
-    phrase_span = phrase_span[1:]
-    # phrases = [seg[s[0]-1:s[1]] for s in phrase_span]
+            pre_span = phrase_spans[-1]
+            if pre_span and start>=pre_span[0] and end<=pre_span[1]:
+                continue
+            if is_concat_coo(dep, pre_span, i):
+                start = pre_span[0]
+                phrase_spans.pop()
+            phrase_spans.append([start, end])
+    
+    phrase_spans_ = [[]]
+    for i in range(1, len(phrase_spans)):
+        if is_concat_uatt(seg, phrase_spans_[-1], phrase_spans[i][0]):
+            phrase_spans_[-1][1] = phrase_spans[i][1]
+        else:
+            phrase_spans_.append(phrase_spans[i])
+    phrase_spans = phrase_spans_[1:]
+    print('131', phrase_spans)
+    # phrases = [seg[s[0]-1:s[1]] for s in phrase_spans]
     # print('noun phrases', phrases)
-    return phrase_span
+    return phrase_spans
     
 def split_AHP():
     '''
@@ -158,26 +185,35 @@ def split_AHP():
         定语从句则直接分辨出三元组
         定中短语则递归调用一下本函数
     并列则直接执行以下操作；长定短中，则取长定执行下面操作
+
+        建筑无法设置泄压设施或泄压面积不符合要求时，建筑中存在可燃气体、蒸气、粉尘或纤维爆炸危险的部位的建筑承重结构应满足抗爆要求。
+    1.去掉长状语
+        建筑中存在可燃气体、蒸气、粉尘或纤维爆炸危险的部位的建筑承重结构应满足抗爆要求。
+
     用原句中对应部分的句法分析结果做如下处理，不断简化句子，引导ltp得到正确的解析结果
         给水厂的设计规模应满足供水范围规定年限内最高日的综合生活用水量、工业企业用水量、浇洒道路和绿地用水量、管网漏损水量及未预见用水量的要求
         保养厂应能承担营运车辆的高级保养任务及相应的配件加工、修制和修车材料、燃料的储存、发放等
         控制中心应具备行车调度、电力调度、环境与设备调度、防灾指挥、客运管理、乘客信息管理、设备维修及信息管理等运营调度和指挥功能，并应对城市轨道交通系统运营的全过程进行集中监控和管理
         给水厂应对制水生产中的主要设施、设备制定和实施巡查维护保养制度，应对主要工艺运行情况及其运行中的动态技术参数，制定和实施质量控制点检验制度
+        建筑中存在可燃气体、蒸气、粉尘或纤维爆炸危险的部位的建筑承重结构应满足抗爆要求。
     1.去掉解析范围内部“的”引导的定语后重新做句法解析，做好定语和词语的对应
     1.去掉“的”引导的长定语、“的”引导的动词短定语-所有定语都是动词，去掉无用的“等”，连续并列合并
         给水厂的设计规模应满足综合生活用水量、工业企业用水量、浇洒道路和绿地用水量、管网漏损水量及未预见用水量的要求
         保养厂应能承担高级保养任务及配件加工、修制和修车材料、燃料的储存
         控制中心应具备行车调度、电力调度、环境与设备调度、防灾指挥、客运管理、乘客信息管理、设备维修及信息管理等运营调度功能，并应对全过程进行集中监控
+        建筑中存在可燃气体或纤维爆炸危险的部位的建筑承重结构应满足抗爆要求。
     2.去掉解析范围内部动词做定语的部分，并做好定语和词语的对应
-    2.去掉“ATT”引导的动词短定语-所有定语都是动词，连续并列合并
+    2.去掉“ATT”引导的动词短定语-所有定语都是动词，连续并列合并(直接COO且都是单词)，去掉短定语(被这一个词单独修饰)
         给水厂的设计规模应满足用水量、工业企业用水量、道路和绿地用水量、管网漏损水量及未预见用水量的要求
         保养厂应能承担高级保养任务及配件加工、修制和材料、燃料的储存
         控制中心应具备行车调度、电力调度、环境与设备调度、指挥、客运管理、乘客信息管理、设备维修及信息管理等运营调度功能，并应对全过程进行集中监控
+        建筑中存在气体或纤维爆炸危险的部位的建筑承重结构应满足抗爆要求。
     3.离得很近的简单并列只保留第一个，去掉无用的“等”，然后重新做句法分析
     3.连续并列合并
         给水厂的设计规模应满足用水量、工业企业用水量、道路用水量、管网漏损水量及未预见用水量的要求
         保养厂应能承担高级保养任务及配件加工和材料的储存
         控制中心应具备行车调度、电力调度、环境与设备调度、指挥、客运管理、乘客信息管理、设备维修及信息管理等运营调度功能，并应对全过程进行集中监控
+        建筑中存在气体爆炸危险的部位的建筑承重结构应满足抗爆要求。
     4.用现有方法做并列解析
     # 4.每个连词前中心语考虑语义、词性、字符相似度来计算
     # 相似度计算：综合考虑语义、词性和字符相似度

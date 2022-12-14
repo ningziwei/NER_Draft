@@ -8,6 +8,7 @@ Key Phrase Recognition
 '''
 from itertools import chain
 
+
 def find_smallest(dep_T2H, p):
     '''
     寻找当前中心语的修饰覆盖的范围

@@ -206,6 +206,7 @@ class WordSpliter:
         '''
         判断是否为省略枚举的实体
         如果是，等后面的词要跟前面的词逐个拼接
+        国道、省道等干线公路及快速路等道路
         lis_pre: [['', '国道'], ['', '省道']], 等前面的词
         lis_post: [['', '干线公路']], 等后面的词
         '''
@@ -218,7 +219,13 @@ class WordSpliter:
         return False
 
     def split_ent(self, txt, ent_list, modi_ent_list, incl_tri):
-        '''分割长实体'''
+        '''
+        分割长实体
+        return
+            ent_list：简单实体列表
+            modi_ent_list：带定语的实体列表
+            incl_tri：有包含关系的三元组列表
+        '''
         if txt[:2]=='下列' and len(txt)<8: 
             return [['',txt]],[],[]
         seg,pos,dep = self.get_spd(txt)
@@ -306,7 +313,7 @@ class WordSpliter:
                     ent_l,modi_ent_l = self.split_ent_base(seg,pos,dep)
                 ent_list += ent_l
                 modi_ent_list += modi_ent_l
-        return ent_list,modi_ent_list,incl_tri
+        return ent_list, modi_ent_list, incl_tri
 
 
 if __name__=='__main__':
@@ -331,6 +338,8 @@ if __name__=='__main__':
         '住宅建筑内的汽车库、锅炉房和建筑中的下列场所',
         '附设在工业与民用建筑内的可燃油油浸变压器、充有可燃油的高压电容器和多油开关'
     ]
+    '儿童活动场所、老年人照料设施中的老年人活动场所、医疗建筑中的治疗室、教学建筑中的教学用房位于走道尽端时，其疏散门不应少于2个；'
+    '对于非水溶性液体外浮顶储罐、内浮顶储罐、直径大于18m的固定顶储罐及水溶性甲、乙、丙类液体立式储罐，其主要灭火设施不应为泡沫炮'
     word_vec_tenc = 'D:\Download\ArchData\data\PreData\\arch-zh-d200-tencent-tp200.txt'
     wv_from_text_word = KeyedVectors.load_word2vec_format(
         word_vec_tenc, binary=False, no_header=False)

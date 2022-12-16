@@ -79,8 +79,7 @@ def is_anchor_word(seg, pos, dep, idx):
 def is_concat_coo(dep, pre_span, idx):
     '''
     判断当前范围是否需要跟上一个范围合并
-    如果当前词的COO能链接到上一个span，则合并
-    如果当前范围跟上一个范围中间是“的”，则合并
+    如果当前词的COO能链接到上一个span，则可以合并
     '''
     f1 = dep[idx][2]=='COO'
     f2 = pre_span and pre_span[0]<=dep[idx][1]<=pre_span[1]
@@ -89,16 +88,20 @@ def is_concat_coo(dep, pre_span, idx):
 def is_concat_uatt(seg, pre_span, start):
     '''
     判断当前范围是否需要跟上一个范围合并
-    如果当前词的COO能链接到上一个span，则合并
-    如果当前范围跟上一个范围中间是“的”，则合并
+    如果当前范围跟上一个范围中间是“的”，则可以合并
     '''
     f1 = start>2 and seg[start-2]=='的'
     f2 = pre_span and pre_span[-1]==start-1
-    # if pre_span and seg[start-1]=='建筑':
-    #     print('88', seg[start-1], seg[start-2])
-    #     print(f1,f2)
-    #     print(pre_span[-1],start)
     return f1 and f2
+
+def is_concat_span(seg, span1, span2):
+    '''
+    判断两个范围是否可以合并
+    如果两者头尾间隔为1或者中间只隔了一个顿号，则可以合并
+    '''
+    f1 = span2[0]-span1[1]==1
+    f2 = span2[0]-span1[1]==2 and seg[span1[1]]=='、'
+    return f1 or f2
 
 def get_so(seg, pos, dep, dep_T2H):
     '''
@@ -124,6 +127,7 @@ def get_so(seg, pos, dep, dep_T2H):
                 phrase_spans.pop()
             phrase_spans.append([start, end])
     
+    # 如果两个span隔一个词且中间是“的”，则合并
     phrase_spans_ = [[]]
     for i in range(1, len(phrase_spans)):
         if is_concat_uatt(seg, phrase_spans_[-1], phrase_spans[i][0]):
@@ -131,6 +135,26 @@ def get_so(seg, pos, dep, dep_T2H):
         else:
             phrase_spans_.append(phrase_spans[i])
     phrase_spans = phrase_spans_[1:]
+    
+    # 如果两个span连续且是同一个动词引导的主宾，则合并
+    idx_span = {}
+    start_idx_span = {}
+    for span in phrase_spans:
+        idx_span.update({s:span for s in range(span[0], span[1]+1)})
+        start_idx_span[span[0]] = span
+    for i in range(len(seg)):
+        for tag in ['SBV','FOB','VOB']:
+            tag_list = dep_T2H[i+1].get(tag, [])
+            if len(tag_list)<=1: continue
+            tag_spans = [idx_span[idx] for idx in tag_list]
+            if all([is_concat_span(seg, tag_spans[j], tag_spans[j+1]) \
+                for j in range(len(tag_spans)-1)]):
+                new_span = [tag_spans[0][0], tag_spans[-1][-1]]
+                for span in tag_spans:
+                    start_idx_span[span[0]] = None
+                start_idx_span[new_span[0]] = new_span
+    phrase_spans = [s for s in start_idx_span.values() if s]
+
     print('131', phrase_spans)
     # phrases = [seg[s[0]-1:s[1]] for s in phrase_spans]
     # print('noun phrases', phrases)
@@ -469,12 +493,15 @@ class WordSpliter:
                 ent_list += ent_l
         return ent_span, ent_list, incl_tri
 
-    def split_ent(self, txt, span, ent_span, ent_list, incl_tri):
+    def split_ent(self, txt, ent_span, ent_list, incl_tri):
         '''
         先做句子预处理，得到so_span的部分，多个SBV、VOB的范围若连续则当作一个
+            get_so模块需要完善
         简单可分则直接分：短语块只有不超过一个等，按连词分后类型都一样，则直接按连词分
+            短语块分类函数
         有等则用此模块：一个等需要判断是否有包含关系；多个等需要判断合理的断开位置
         否则用前向后向算法：处理到足够简单后，直接用并列关系得到结果即可
+            直接按照并列关系分即可
         
         分割长实体
         建筑物设计应包括平面与空间布局、结构和门窗等与风险防范相关的内容。

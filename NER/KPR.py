@@ -227,6 +227,29 @@ def split_AHP():
     水处理药剂必须计量投加。
 '''
 
+def build_T2H(dep):
+    '''
+    根据依存树构建每个词的发射字典
+    txt: 设备机房、电梯机房、水箱间、天线
+    dep: [
+        (1, 2, 'ATT'), (2, 0, 'HED'), (3, 5, 'WP'), 
+        (4, 5, 'ATT'), (5, 2, 'COO'), (6, 7, 'WP'), 
+        (7, 2, 'COO'), (8, 9, 'WP'), (9, 2, 'COO')
+    ]
+    return {
+        2: {'ATT': [1], 'COO': [5, 7, 9]}, 
+        0: {'HED': [2]}, 
+        5: {'ATT': [4]}
+    }
+    '''
+    dep_T2H = {}
+    for d in dep:
+        if d[2] in ['WP','LAD']: continue
+        if d[1] in dep_T2H:
+            dep_T2H[d[1]][d[2]] = dep_T2H[d[1]].get(d[2],[])+[d[0]]
+        else:
+            dep_T2H[d[1]] = {d[2]:[d[0]]}
+    return dep_T2H
 
 class WordSpliter:
     '''
@@ -331,30 +354,6 @@ class WordSpliter:
             ['', '水箱间'], ['', '天线']
         ]
         '''
-        def build_T2H(dep):
-            '''
-            根据依存树构建每个词的发射字典
-            txt: 设备机房、电梯机房、水箱间、天线
-            dep: [
-                (1, 2, 'ATT'), (2, 0, 'HED'), (3, 5, 'WP'), 
-                (4, 5, 'ATT'), (5, 2, 'COO'), (6, 7, 'WP'), 
-                (7, 2, 'COO'), (8, 9, 'WP'), (9, 2, 'COO')
-            ]
-            return {
-                2: {'ATT': [1], 'COO': [5, 7, 9]}, 
-                0: {'HED': [2]}, 
-                5: {'ATT': [4]}
-            }
-            '''
-            dep_T2H = {}
-            for d in dep:
-                if d[2] in ['WP','LAD']: continue
-                if d[1] in dep_T2H:
-                    dep_T2H[d[1]][d[2]] = dep_T2H[d[1]].get(d[2],[])+[d[0]]
-                else:
-                    dep_T2H[d[1]] = {d[2]:[d[0]]}
-            return dep_T2H
-
         # 构建发射字典
         dep_T2H = build_T2H(dep)
         # 获取所有中心语所在位置
@@ -368,12 +367,11 @@ class WordSpliter:
                 p = max(dep_T2H[p]['COO'])
             ent_span.append([start, p])
         
-        ent_list = []
-        for s in ent_span:
-            ent = seg[s[0]-1:s[1]]
-            ent_list.append([ent])
+        ent_list = [[seg[s[0]-1:s[1]]] for s in ent_span]
+        # for s in ent_span:
+        #     ent_list.append([seg[s[0]-1:s[1]]])
 
-        return ent_span
+        return ent_span, ent_list
 
     def is_ellip(self, lis_pre, lis_post):
         '''
@@ -391,8 +389,13 @@ class WordSpliter:
             if max(sim[0])<0.4: return True
         return False
 
-    def split_ent(self, txt, ent_list, incl_tri):
-        '''分割长实体'''
+    def split_ent_(self, txt, ent_span, ent_list, incl_tri):
+        '''
+        分割长实体
+        建筑物设计应包括平面与空间布局、结构和门窗等与风险防范相关的内容。
+        句法分析完全错误：实体装置设计应包括安防设备的自身实体保护和保护目标的近身式保护箱等内容。
+        局部突出屋面的楼梯间、电梯机房、水箱间等辅助用房水平投影面积占屋顶平面面积不超过1/4者
+        '''
         if txt[:2]=='下列' and len(txt)<8: 
             return [['',txt]],[],[]
         seg,pos,dep = self.get_spd(txt)
@@ -416,7 +419,7 @@ class WordSpliter:
             for i in range(len(split_p)-1):
                 txt_ = ''.join(seg[split_p[i]+1:split_p[i+1]])
                 # print('189', txt_)
-                ent_l, incl_t = self.split_ent(txt_,[],[])
+                ent_l, incl_t = self.split_ent(txt_,[],[],[])
                 ent_list += ent_l
                 incl_tri += incl_t
             return ent_list, incl_tri
@@ -435,18 +438,22 @@ class WordSpliter:
                 # 处理等前词组
                 txt_pre = ''.join(seg_[:p])
                 # print('205', txt_pre, seg_)
-                ent_l_pre, _ = self.split_ent(txt_pre,[],[])
+                ent_s_pre, ent_l_pre, _ = self.split_ent(txt_pre,[],[],[])
                 # 处理等后的词组
                 txt_post = ''.join(seg_[p+1:])
                 seg_,pos_,dep_ = self.get_spd(txt_post)
-                ent_l_post = self.split_ent_base(seg_,pos_,dep_)
+                ent_s_post, ent_l_post = self.split_ent_base(seg_,pos_,dep_)
                 # 如果是省略类型，则等前部分要和等后部分拼接
-                if self.is_ellip(ent_l_pre,ent_l_post):
+                if self.is_ellip(ent_l_pre, ent_l_post):
                     for i in ent_l_pre:
-                        ent_l_pre += ent_l_post[0]
+                        ent_s_pre[i] += ent_s_post[0]
+                        ent_l_pre[i] += ent_l_post[0]
+                    ent_span += ent_s_pre
                     ent_list += ent_l_pre
                 # 如果是枚举类型，则等后部分和等前部分具有包含关系
                 else:
+                    ent_span += ent_s_pre
+                    ent_span += ent_s_post
                     ent_list += ent_l_pre
                     ent_list += ent_l_post
                     incl_tri = [[ent_l_post[0],e] for e in ent_l_pre]
@@ -455,10 +462,96 @@ class WordSpliter:
                 if bcp_num>2:
                     txt_ = ''.join(seg_)
                     seg_,pos_,dep_ = self.get_spd(txt_)
-                    ent_l = self.split_ent_base(seg_,pos_,dep_)
+                    ent_s, ent_l = self.split_ent_base(seg_,pos_,dep_)
                 else:
-                    ent_l = self.split_ent_base(seg,pos,dep)
+                    ent_s, ent_l = self.split_ent_base(seg,pos,dep)
+                ent_span += ent_s
                 ent_list += ent_l
-        return ent_list, incl_tri
+        return ent_span, ent_list, incl_tri
 
+    def split_ent(self, txt, span, ent_span, ent_list, incl_tri):
+        '''
+        先做句子预处理，得到so_span的部分，多个SBV、VOB的范围若连续则当作一个
+        简单可分则直接分：短语块只有不超过一个等，按连词分后类型都一样，则直接按连词分
+        有等则用此模块：一个等需要判断是否有包含关系；多个等需要判断合理的断开位置
+        否则用前向后向算法：处理到足够简单后，直接用并列关系得到结果即可
+        
+        分割长实体
+        建筑物设计应包括平面与空间布局、结构和门窗等与风险防范相关的内容。
+        句法分析完全错误：实体装置设计应包括安防设备的自身实体保护和保护目标的近身式保护箱等内容。
+            短语块只有不超过一个等，按连词分后类型都一样，则直接按连词分
+        局部突出屋面的楼梯间、电梯机房、水箱间等辅助用房水平投影面积占屋顶平面面积不超过1/4者
+        '''
+        if txt[:2]=='下列' and len(txt)<8:
+            return [['',txt]],[],[]
+        seg,pos,dep = self.get_spd(txt)
+        # print('151', seg,pos,dep)
+        word_num = len(seg)
+        
+        deng_pos = []
+        for i in range(word_num):
+            if seg[i] == '等': deng_pos.append(i)
+        
+        '''如果有多个等， 则在每个等后面的第一个连词处分开'''
+        if len(deng_pos)>1:
+            split_p = [-1]
+            for p in deng_pos[:-1]:
+                while p<word_num:
+                    if pos[p]=='c' or seg[p]=='、':
+                        split_p.append(p)
+                        break
+                    p += 1
+            split_p += [len(seg)]
+            for i in range(len(split_p)-1):
+                txt_ = ''.join(seg[split_p[i]+1:split_p[i+1]])
+                # print('189', txt_)
+                ent_l, incl_t = self.split_ent(txt_,[],[],[])
+                ent_list += ent_l
+                incl_tri += incl_t
+            return ent_list, incl_tri
+        
+        '''找到可以分割的连词'''
+        break_cont_pos = [-1]
+        break_cont_pos += self.get_break_cont(seg,pos,dep)
+        break_cont_pos += [word_num]
+        bcp_num = len(break_cont_pos)
+        '''处理连词分割后的每一部分'''
+        for i in range(bcp_num-1):
+            seg_ = seg[break_cont_pos[i]+1:break_cont_pos[i+1]]
+            # 有等则分等前等后，没等则直接split_ent_base
+            if '等' in seg_:
+                p = self.find_word_pos(seg_, '等')
+                # 处理等前词组
+                txt_pre = ''.join(seg_[:p])
+                # print('205', txt_pre, seg_)
+                ent_s_pre, ent_l_pre, _ = self.split_ent(txt_pre,[],[],[])
+                # 处理等后的词组
+                txt_post = ''.join(seg_[p+1:])
+                seg_,pos_,dep_ = self.get_spd(txt_post)
+                ent_s_post, ent_l_post = self.split_ent_base(seg_,pos_,dep_)
+                # 如果是省略类型，则等前部分要和等后部分拼接
+                if self.is_ellip(ent_l_pre, ent_l_post):
+                    for i in ent_l_pre:
+                        ent_s_pre[i] += ent_s_post[0]
+                        ent_l_pre[i] += ent_l_post[0]
+                    ent_span += ent_s_pre
+                    ent_list += ent_l_pre
+                # 如果是枚举类型，则等后部分和等前部分具有包含关系
+                else:
+                    ent_span += ent_s_pre
+                    ent_span += ent_s_post
+                    ent_list += ent_l_pre
+                    ent_list += ent_l_post
+                    incl_tri = [[ent_l_post[0],e] for e in ent_l_pre]
+            # 其余情况用split_ent_base处理
+            else:
+                if bcp_num>2:
+                    txt_ = ''.join(seg_)
+                    seg_,pos_,dep_ = self.get_spd(txt_)
+                    ent_s, ent_l = self.split_ent_base(seg_,pos_,dep_)
+                else:
+                    ent_s, ent_l = self.split_ent_base(seg,pos,dep)
+                ent_span += ent_s
+                ent_list += ent_l
+        return ent_span, ent_list, incl_tri
 
